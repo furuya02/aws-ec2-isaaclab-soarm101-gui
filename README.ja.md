@@ -164,54 +164,42 @@ aws ec2 describe-volumes --filters Name=tag:Name,Values=aws-ec2-isaaclab-soarm10
 
 翌日 Cost Explorer で当該リソースの課金が 0 円になっていることも確認してください。
 
-## 実機検証メモ（2026/05/18）
+## 実機検証メモ（2026/05/18 + 2026/05/19）
 
-本リポジトリの `cdk/` と `scripts/` は初期スキャフォールド版です。実機検証で以下の **動作する設定** が判明したものの、まだ `scripts/` に反映されていません。次回更新で取り込み予定です。
+`scripts/setup-dcv.sh` と `scripts/setup-isaac.sh` は実機検証で判明した **動作する設定** に修正済みです。
 
 ### 動作確認済構成
 
 | 項目 | 値 |
 |--|--|
-| インスタンス | **g6e.xlarge (L40S)**（g5/g6 = A10G/L4 は未検証） |
+| インスタンス（**第一推奨**） | **g5.xlarge (A10G 24GB)** ≒ 約 195 円/h |
+| インスタンス（代替） | g6e.xlarge (L40S 48GB) ≒ 約 363 円/h、g6.xlarge (L4 24GB) ≒ 約 200 円/h（L4 は未検証） |
 | AMI | Ubuntu 22.04.5 LTS HVM |
 | NVIDIA Driver | **CUDA Datacenter driver 570** (`nvidia-driver-570`) |
 | Amazon DCV | 2025.0（Ubuntu 22.04 x86_64） |
 | Isaac Sim | 5.1.0-rc.19 (`nvcr.io/nvidia/isaac-sim:5.1.0`) |
 
-### 重要なハマりどころと対処
+### 重要なハマりどころ（記事 §10 候補）
 
-1. **GRID driver では Isaac Sim 5.1.0 が動かない**（`librtx.scenedb` で必ずクラッシュ）。`scripts/setup-dcv.sh` は GRID driver をインストールしているが、**CUDA Datacenter driver に置き換える必要あり**。
-2. **`nvidia-xconfig` は CUDA driver パッケージに含まれない**。xorg.conf を手書き（`AllowEmptyInitialConfiguration "True"` を含める）。
-3. **`./isaac-sim.sh` はデフォルトで Streaming experience を起動**する。Native GUI には `./kit/kit /isaac-sim/apps/isaacsim.exp.full.kit` を直接呼ぶ必要あり（`--experience` 引数は内部で無視される）。
-4. **URDF Import 時、ホスト側 `~/work` 配下に書き込み権限が必要**（`sudo chmod -R a+rwX ~/work/`）。コンテナ内 root が USD 変換ファイルを書き出すため。
-5. **Physics Inspector** は開いた直後に `[No selection]` + 「Re-Enable authoring」ボタンが出る。これを押して articulation を再パースする必要あり。
+1. **GRID driver では Isaac Sim 5.1.0 が動かない**（`librtx.scenedb` で必ずクラッシュ）。AWS の Workstation 系記事は GRID driver 推奨が多いが、Isaac Sim では **CUDA Datacenter driver `nvidia-driver-570`** を使う必要あり（`setup-dcv.sh` 適用済）。
+2. **`nvidia-xconfig` は CUDA driver パッケージに含まれない**。xorg.conf を手書き（`AllowEmptyInitialConfiguration "True"` を含める）が必要（`setup-dcv.sh` 適用済）。
+3. **`./isaac-sim.sh` はデフォルトで Streaming experience を起動**する。Native Desktop GUI には `--entrypoint /isaac-sim/kit/kit` + `/isaac-sim/apps/isaacsim.exp.full.kit` を直接呼ぶ（`setup-isaac.sh` の出力に反映）。
+4. **URDF Import 時、ホスト側 `~/work` 配下に書き込み権限が必要**（`sudo chmod -R a+rwX ~/work/`、`setup-isaac.sh` 適用済）。
+5. **GPU タイプ切替時は cache クリア必須**（L40S 用 shader cache を A10G で読むと `omni.kit.registry.nucleus` で hang）。
+   ```bash
+   rm -rf ~/docker/isaac-sim/{kit-cache,ov-cache,gl-cache,compute-cache,logs}
+   ```
+6. **Physics Inspector** は開いた直後に「Re-Enable authoring」ボタンを押す必要あり。
+7. **`xhost +local:docker` は SSH ターミナルでは動かない**（DISPLAY 未設定）。**DCV デスクトップ内ターミナルで実行**するか、SSH なら `export DISPLAY=:0` を先に設定。
 
-### 動作する Isaac Sim 起動コマンド（DCV デスクトップ内ターミナルで）
+### 動作確認マトリックス
 
-```bash
-xhost +local:docker
-docker rm -f isaac-sim 2>/dev/null
-
-docker run --name isaac-sim --rm \
-  --runtime=nvidia --gpus all \
-  --ipc=host --network=host \
-  -e DISPLAY=${DISPLAY} -e ACCEPT_EULA=Y -e PRIVACY_CONSENT=Y \
-  -v /tmp/.X11-unix:/tmp/.X11-unix \
-  -v ${HOME}/work:/work \
-  -v ${HOME}/docker/isaac-sim/kit-cache:/isaac-sim/kit/cache:rw \
-  -v ${HOME}/docker/isaac-sim/ov-cache:/root/.cache/ov:rw \
-  -v ${HOME}/docker/isaac-sim/gl-cache:/root/.cache/nvidia/GLCache:rw \
-  -v ${HOME}/docker/isaac-sim/compute-cache:/root/.nv/ComputeCache:rw \
-  -v ${HOME}/docker/isaac-sim/logs:/root/.nvidia-omniverse/logs:rw \
-  --entrypoint /isaac-sim/kit/kit \
-  nvcr.io/nvidia/isaac-sim:5.1.0 \
-  /isaac-sim/apps/isaacsim.exp.full.kit
-```
-
-### 次回確認予定
-
-- g5.xlarge (A10G) でも CUDA driver 570 で同様に動くか
-- 動けば scripts/ を実機準拠に修正（GRID → CUDA driver、kit 直接呼び出し、chmod、apt source 追加 等）
+| GPU | driver | cache | 結果 |
+|--|--|--|--|
+| L40S (g6e) | GRID 595 | — | ❌ librtx crash |
+| L40S (g6e) | CUDA 570 | 初期 | ✅ 動作 |
+| A10G (g5) | CUDA 570 | L40S 用残置 | ❌ nucleus hang |
+| **A10G (g5)** | **CUDA 570** | **クリア** | ✅ **完全動作 (推奨)** |
 
 ## License
 

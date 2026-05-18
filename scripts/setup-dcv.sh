@@ -1,9 +1,13 @@
 #!/bin/bash
-# NVIDIA GRID Driver + Amazon DCV Server installer (Ubuntu 22.04, g5.xlarge)
-# Run on g5.xlarge over SSH. Reboot after this script for the driver to load.
+# NVIDIA CUDA Datacenter Driver 570 + Amazon DCV Server installer (Ubuntu 22.04, g5.xlarge / g6e.xlarge)
+# Run on g5.xlarge (or g6e.xlarge) over SSH. Reboot after this script for the driver to load.
 # Refs:
 #   - https://docs.aws.amazon.com/dcv/latest/adminguide/setting-up-installing-linux-server.html
-#   - s3://ec2-linux-nvidia-drivers/latest/ (NVIDIA GRID driver for AWS)
+#   - https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/
+# Note:
+#   - GRID driver (s3://ec2-linux-nvidia-drivers/latest/) は Isaac Sim 5.1.0 と非互換
+#     (librtx.scenedb で必ず crash する) ため使用しない。
+#     CUDA Datacenter driver (nvidia-driver-570, GUI 用 libGL を含む) を使う。
 set -euo pipefail
 
 # --- 1. Ubuntu Desktop (minimal) ---
@@ -18,16 +22,47 @@ fi
 # --- 3. Switch to graphical target ---
 sudo systemctl set-default graphical.target
 
-# --- 4. NVIDIA GRID Driver (RTX Virtual Workstation) from S3 ---
-sudo apt-get install -y unzip awscli build-essential "linux-headers-$(uname -r)"
-mkdir -p ~/grid && cd ~/grid
-aws s3 cp --recursive s3://ec2-linux-nvidia-drivers/latest/ . --region ap-northeast-1
-chmod +x NVIDIA-Linux-x86_64*.run
-sudo ./NVIDIA-Linux-x86_64*.run --silent
+# --- 4. NVIDIA CUDA Datacenter Driver 570 (apt 経由、GUI 用 libGL 含む) ---
+sudo apt-get install -y build-essential "linux-headers-$(uname -r)"
+cd /tmp
+wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+sudo dpkg -i cuda-keyring_1.1-1_all.deb
+rm -f cuda-keyring_1.1-1_all.deb
+sudo apt-get update
+sudo apt-get install -y nvidia-driver-570
 cd -
 
-# --- 5. Xorg auto-configure for GRID ---
-sudo nvidia-xconfig --preserve-busid --enable-all-gpus
+# --- 5. Xorg config (CUDA driver 用、手書き必須) ---
+# Note:
+#   - nvidia-xconfig は CUDA Datacenter driver パッケージに含まれないため手書き
+#   - AllowEmptyInitialConfiguration "True" は headless サーバ (モニタ未接続) で必須
+sudo tee /etc/X11/xorg.conf > /dev/null <<'EOF'
+Section "ServerLayout"
+    Identifier "Layout0"
+    Screen 0 "Screen0"
+EndSection
+Section "Files"
+EndSection
+Section "Monitor"
+    Identifier "Monitor0"
+    Option "DPMS"
+EndSection
+Section "Device"
+    Identifier "Device0"
+    Driver "nvidia"
+    Option "AllowEmptyInitialConfiguration" "True"
+EndSection
+Section "Screen"
+    Identifier "Screen0"
+    Device "Device0"
+    Monitor "Monitor0"
+    DefaultDepth 24
+    Option "AllowEmptyInitialConfiguration" "True"
+    SubSection "Display"
+        Depth 24
+    EndSubSection
+EndSection
+EOF
 
 # --- 6. Amazon DCV Server (Ubuntu 22.04 x86_64) ---
 cd /tmp
@@ -63,7 +98,7 @@ sudo passwd ubuntu
 echo ""
 echo "============================================================"
 echo " DCV setup complete."
-echo " Reboot is recommended to fully load the GRID driver:"
+echo " Reboot is required to load NVIDIA driver 570:"
 echo "   sudo reboot"
 echo ""
 echo " After reboot, open in your browser:"

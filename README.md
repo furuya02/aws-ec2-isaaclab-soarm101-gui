@@ -164,54 +164,42 @@ Also check Cost Explorer the next day to confirm billing has stopped.
 
 A Japanese version of this README is available at [README.ja.md](./README.ja.md).
 
-## Real-world verification notes (2026/05/18)
+## Real-world verification notes (2026/05/18 + 2026/05/19)
 
-The `cdk/` and `scripts/` in this repo are the initial scaffold. End-to-end testing revealed the **actual working configuration** below, which is **not yet reflected** in the scripts. To be incorporated in a follow-up commit.
+`scripts/setup-dcv.sh` and `scripts/setup-isaac.sh` have been updated to reflect the verified working configuration.
 
 ### Verified working configuration
 
 | Item | Value |
 |--|--|
-| Instance | **g6e.xlarge (L40S)** (g5 = A10G, g6 = L4 not yet tested) |
+| Instance (**primary recommendation**) | **g5.xlarge (A10G 24GB)** ≈ ~$1.30/h |
+| Instance (alternative) | g6e.xlarge (L40S 48GB) ≈ ~$2.42/h, g6.xlarge (L4 24GB) ≈ ~$1.32/h (L4 untested) |
 | AMI | Ubuntu 22.04.5 LTS HVM |
 | NVIDIA Driver | **CUDA Datacenter driver 570** (`nvidia-driver-570`) |
 | Amazon DCV | 2025.0 (Ubuntu 22.04 x86_64) |
 | Isaac Sim | 5.1.0-rc.19 (`nvcr.io/nvidia/isaac-sim:5.1.0`) |
 
-### Key gotchas and fixes
+### Key gotchas (candidates for the article's "stuck points" section)
 
-1. **GRID driver does not work with Isaac Sim 5.1.0** (always crashes at `librtx.scenedb`). `scripts/setup-dcv.sh` installs GRID driver but needs to be replaced with CUDA Datacenter driver.
-2. **`nvidia-xconfig` is not bundled with the CUDA driver package**. Write `xorg.conf` by hand (include `AllowEmptyInitialConfiguration "True"`).
-3. **`./isaac-sim.sh` launches the Streaming experience by default**. To get a Native GUI window, invoke `./kit/kit /isaac-sim/apps/isaacsim.exp.full.kit` directly (the `--experience` argument is ignored internally).
-4. **URDF Import requires write permission on the host `~/work` tree** (`sudo chmod -R a+rwX ~/work/`). The container runs as root and writes the converted USD next to the URDF.
-5. **Physics Inspector** opens with `[No selection]` and a "Re-Enable authoring" button. Click it to reparse the articulation.
+1. **GRID driver does NOT work with Isaac Sim 5.1.0** (always crashes at `librtx.scenedb`). AWS DCV documentation generally recommends the GRID driver, but for Isaac Sim you need **CUDA Datacenter driver `nvidia-driver-570`** (applied in `setup-dcv.sh`).
+2. **`nvidia-xconfig` is not bundled with the CUDA driver package**. The `xorg.conf` must be written by hand, including `AllowEmptyInitialConfiguration "True"` (applied in `setup-dcv.sh`).
+3. **`./isaac-sim.sh` launches the Streaming experience by default**. To get a Native Desktop GUI, invoke `--entrypoint /isaac-sim/kit/kit` + `/isaac-sim/apps/isaacsim.exp.full.kit` directly (printed by `setup-isaac.sh`).
+4. **URDF Import requires write permission on `~/work`** (`sudo chmod -R a+rwX ~/work/`, applied in `setup-isaac.sh`). The container runs as root and writes the converted USD next to the URDF.
+5. **Clear the cache when switching GPU type** (an L40S-built shader cache will hang `omni.kit.registry.nucleus` on A10G):
+   ```bash
+   rm -rf ~/docker/isaac-sim/{kit-cache,ov-cache,gl-cache,compute-cache,logs}
+   ```
+6. **Physics Inspector** opens with a "Re-Enable authoring" button — click it to reparse the articulation.
+7. **`xhost +local:docker` does NOT work from an SSH terminal** (no `DISPLAY`). Run it **inside the DCV desktop terminal**, or `export DISPLAY=:0` first.
 
-### Working `docker run` command (run inside the DCV desktop terminal)
+### Verification matrix
 
-```bash
-xhost +local:docker
-docker rm -f isaac-sim 2>/dev/null
-
-docker run --name isaac-sim --rm \
-  --runtime=nvidia --gpus all \
-  --ipc=host --network=host \
-  -e DISPLAY=${DISPLAY} -e ACCEPT_EULA=Y -e PRIVACY_CONSENT=Y \
-  -v /tmp/.X11-unix:/tmp/.X11-unix \
-  -v ${HOME}/work:/work \
-  -v ${HOME}/docker/isaac-sim/kit-cache:/isaac-sim/kit/cache:rw \
-  -v ${HOME}/docker/isaac-sim/ov-cache:/root/.cache/ov:rw \
-  -v ${HOME}/docker/isaac-sim/gl-cache:/root/.cache/nvidia/GLCache:rw \
-  -v ${HOME}/docker/isaac-sim/compute-cache:/root/.nv/ComputeCache:rw \
-  -v ${HOME}/docker/isaac-sim/logs:/root/.nvidia-omniverse/logs:rw \
-  --entrypoint /isaac-sim/kit/kit \
-  nvcr.io/nvidia/isaac-sim:5.1.0 \
-  /isaac-sim/apps/isaacsim.exp.full.kit
-```
-
-### To-be-verified next
-
-- Whether g5.xlarge (A10G) also works with CUDA driver 570
-- If it does, update `scripts/` to reflect the actual working steps (GRID → CUDA driver, kit invocation, chmod, apt sources, etc.)
+| GPU | driver | cache | Result |
+|--|--|--|--|
+| L40S (g6e) | GRID 595 | — | ❌ librtx crash |
+| L40S (g6e) | CUDA 570 | fresh | ✅ works |
+| A10G (g5) | CUDA 570 | leftover L40S cache | ❌ nucleus hang |
+| **A10G (g5)** | **CUDA 570** | **cleared** | ✅ **fully working (recommended)** |
 
 ## License
 
