@@ -60,13 +60,25 @@ pnpm exec cdk deploy \
   -c allowed_cidr=${MY_IP}/32
 ```
 
-デプロイ完了後、Outputs に以下が表示されます:
+デプロイ完了後、Outputs には以下のみが表示されます（EIP を使っておらず Public IP は stop/start で変わるため、固定 IP として Output には載せていません）:
 
-- `InstanceId`
-- `PublicIp`（Elastic IP）
-- `SshCommand`
-- `SsmStartCommand`
-- `DcvUrl`（DCV セットアップ後にブラウザで開く URL）
+- `InstanceId` — stop/start で不変
+- `SsmStartCommand` — IP に依存しない SSM Session Manager コマンド
+
+live な Public IP（SSH / DCV URL）の取得方法:
+
+```bash
+# SSH（Name タグから現在の Public IP を引いて接続）
+./scripts/connect.sh
+
+# DCV URL
+PUBLIC_IP=$(aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=aws-ec2-isaaclab-soarm101-gui-instance" \
+            "Name=instance-state-name,Values=running" \
+  --region ap-northeast-1 \
+  --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+echo "https://${PUBLIC_IP}:8443"
+```
 
 ## 4. 動作確認（SSH 接続）
 
@@ -88,7 +100,7 @@ ssh -i ~/.ssh/ec2-key.pem ubuntu@<PublicIp>
 
 | スクリプト | 実行場所 | 役割 |
 |--|--|--|
-| `scripts/connect.sh` | ローカル PC | EIP を引いて SSH 接続 |
+| `scripts/connect.sh` | ローカル PC | 現在の Public IP を Name タグから引いて SSH 接続 |
 | `scripts/setup-docker.sh` | EC2 (t3 で OK) | Docker + NVIDIA Container Toolkit |
 | `scripts/switch-to-g5.sh` | ローカル PC | t3.medium → g5.xlarge |
 | `scripts/setup-dcv.sh` | EC2 (g5) | NVIDIA GRID Driver + Amazon DCV Server |
@@ -157,9 +169,8 @@ pnpm exec cdk destroy --force
 削除後、以下を確認してください:
 
 ```bash
-# EC2 / EIP / EBS / SG の残留がないこと
+# EC2 / EBS の残留がないこと（EIP は元々作っていないので確認不要）
 aws ec2 describe-instances --filters Name=tag:Name,Values=aws-ec2-isaaclab-soarm101-gui-instance
-aws ec2 describe-addresses --filters Name=tag:Name,Values=aws-ec2-isaaclab-soarm101-gui-eip
 aws ec2 describe-volumes --filters Name=tag:Name,Values=aws-ec2-isaaclab-soarm101-gui-instance
 ```
 

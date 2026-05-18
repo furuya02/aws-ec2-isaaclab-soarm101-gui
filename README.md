@@ -60,13 +60,25 @@ pnpm exec cdk deploy \
   -c allowed_cidr=${MY_IP}/32
 ```
 
-Outputs after deploy:
+Outputs after deploy (kept minimal — Public IP changes on every stop/start since EIP is not used):
 
-- `InstanceId`
-- `PublicIp` (Elastic IP)
-- `SshCommand`
-- `SsmStartCommand`
-- `DcvUrl` (use after DCV is installed on the g5 instance)
+- `InstanceId` — stable across stop/start
+- `SsmStartCommand` — IP-independent SSM Session Manager command
+
+For the live Public IP (SSH / DCV URL), use:
+
+```bash
+# SSH (queries Public IP by Name tag at run time)
+./scripts/connect.sh
+
+# DCV URL
+PUBLIC_IP=$(aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=aws-ec2-isaaclab-soarm101-gui-instance" \
+            "Name=instance-state-name,Values=running" \
+  --region ap-northeast-1 \
+  --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+echo "https://${PUBLIC_IP}:8443"
+```
 
 ## 4. Smoke test (SSH)
 
@@ -153,11 +165,10 @@ cd aws-ec2-isaaclab-soarm101-gui/cdk
 pnpm exec cdk destroy --force
 ```
 
-Then confirm no leftovers:
+Then confirm no leftovers (no EIP check needed — EIP is not created by this stack):
 
 ```bash
 aws ec2 describe-instances --filters Name=tag:Name,Values=aws-ec2-isaaclab-soarm101-gui-instance
-aws ec2 describe-addresses --filters Name=tag:Name,Values=aws-ec2-isaaclab-soarm101-gui-eip
 aws ec2 describe-volumes --filters Name=tag:Name,Values=aws-ec2-isaaclab-soarm101-gui-instance
 ```
 
