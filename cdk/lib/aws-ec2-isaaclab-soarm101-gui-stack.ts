@@ -83,7 +83,9 @@ export class AwsEc2IsaaclabSoarm101GuiStack extends cdk.Stack {
       blockDevices: [
         {
           deviceName: '/dev/sda1',
-          volume: ec2.BlockDeviceVolume.ebs(50, {
+          // 35 GB: Isaac Sim 5.1.0 container (22.9 GB) + OS / NVIDIA driver / Ubuntu Desktop / DCV (~6 GB) + headroom (~6 GB).
+          // gp3 is online-expandable, so start small and grow with `modify-volume` + `resize2fs` if needed.
+          volume: ec2.BlockDeviceVolume.ebs(35, {
             volumeType: ec2.EbsDeviceVolumeType.GP3,
             deleteOnTermination: true,
             encrypted: true,
@@ -93,10 +95,11 @@ export class AwsEc2IsaaclabSoarm101GuiStack extends cdk.Stack {
     });
     cdk.Tags.of(instance).add('Name', `${PROJECT}-instance`);
 
-    const eip = new ec2.CfnEIP(this, 'Eip', {
-      instanceId: instance.instanceId,
-      tags: [{ key: 'Name', value: `${PROJECT}-eip` }],
-    });
+    // Note: Elastic IP is intentionally NOT created.
+    // - Public IPv4 charge is the same whether EIP or auto-assigned ($0.005/h while attached).
+    // - But auto-assigned Public IP is RELEASED on stop, so cost while stopped becomes $0.
+    // - Trade-off: Public IP changes on every stop/start. connect.sh queries by Name tag, so it
+    //   still works, but the DCV browser URL must be re-checked after each start.
 
     const idleAlarm = new cloudwatch.Alarm(this, 'IdleStopAlarm', {
       alarmName: `${PROJECT}-idle-stop`,
@@ -120,21 +123,25 @@ export class AwsEc2IsaaclabSoarm101GuiStack extends cdk.Stack {
       value: instance.instanceId,
       description: 'EC2 Instance ID',
     });
+    // Note: Public IP changes on every stop/start (no EIP). The value below reflects the
+    // IP at the time of CDK deploy; for the live IP after a stop/start cycle, use:
+    //   aws ec2 describe-instances --instance-ids <InstanceId> --query 'Reservations[0].Instances[0].PublicIpAddress'
+    // or just run ./scripts/connect.sh (it queries by Name tag).
     new cdk.CfnOutput(this, 'PublicIp', {
-      value: eip.ref,
-      description: 'Elastic IP attached to the instance',
+      value: instance.instancePublicIp,
+      description: 'Public IP at deploy time (changes on stop/start, no EIP)',
     });
     new cdk.CfnOutput(this, 'SshCommand', {
-      value: `ssh -i ~/.ssh/${keypairName}.pem ubuntu@${eip.ref}`,
-      description: 'SSH command (replace pem path if needed)',
+      value: `ssh -i ~/.ssh/${keypairName}.pem ubuntu@${instance.instancePublicIp}`,
+      description: 'SSH command (IP at deploy time; use ./scripts/connect.sh after stop/start)',
     });
     new cdk.CfnOutput(this, 'SsmStartCommand', {
       value: `aws ssm start-session --target ${instance.instanceId} --region ${this.region}`,
-      description: 'SSM Session Manager command (no pem needed)',
+      description: 'SSM Session Manager command (no pem needed, IP-independent)',
     });
     new cdk.CfnOutput(this, 'DcvUrl', {
-      value: `https://${eip.ref}:8443`,
-      description: 'NICE DCV browser URL (after DCV setup on g5)',
+      value: `https://${instance.instancePublicIp}:8443`,
+      description: 'NICE DCV browser URL (IP changes on stop/start, re-check via describe-instances)',
     });
   }
 }

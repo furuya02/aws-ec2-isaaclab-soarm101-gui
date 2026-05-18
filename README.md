@@ -12,8 +12,8 @@ This stack provisions a GPU-capable EC2 host, which is expensive when left runni
 |--|--|--|
 | EC2 `g5.xlarge` (A10G 24GB) | ~$1.30/h | ~$31 (≈ ¥4,700/day) |
 | EC2 `t3.medium` (everyday) | ~$0.05/h | ~$1.2 (≈ ¥180/day) |
-| EBS gp3 50 GB | $0.10/GB/mo | — |
-| Elastic IP (billed even when stopped) | $0.005/h | ~$0.12/day |
+| EBS gp3 35 GB | $0.096/GB/mo | — (~¥17/day) |
+| Public IPv4 (auto-assigned, **released on stop**) | $0.005/h while running | 0 円 while stopped |
 
 **Triple defense**:
 1. **CloudWatch Alarm**: auto-stops the instance after 30 minutes of CPU < 2% (built into this stack)
@@ -36,7 +36,8 @@ This stack provisions a GPU-capable EC2 host, which is expensive when left runni
 - VPC (single AZ `ap-northeast-1a`, public subnet only, no NAT)
 - Security Group (SSH 22, NICE DCV TCP+UDP 8443, restricted to the supplied CIDR)
 - IAM Role (SSM Session Manager + S3 read for DCV license / NVIDIA GRID driver)
-- EC2 Instance (initial `t3.medium`, Ubuntu 22.04 LTS, EBS gp3 50 GB, attached EIP)
+- EC2 Instance (initial `t3.medium`, Ubuntu 22.04 LTS, **EBS gp3 35 GB** — online-expandable)
+- Public IPv4 is **auto-assigned** (no EIP). IP changes on every stop/start; query the live IP with `./scripts/connect.sh` or `aws ec2 describe-instances`.
 - CloudWatch Alarm (CPU < 2% × 30 min → native EC2 Stop action, no Lambda)
 
 ## 3. Deploy
