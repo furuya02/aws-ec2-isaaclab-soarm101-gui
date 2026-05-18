@@ -119,29 +119,19 @@ export class AwsEc2IsaaclabSoarm101GuiStack extends cdk.Stack {
     });
     idleAlarm.addAlarmAction(new cw_actions.Ec2Action(cw_actions.Ec2InstanceAction.STOP));
 
+    // Outputs are intentionally limited to IP-independent values.
+    // Public IP changes on every stop/start (no EIP), so SshCommand / DcvUrl that embed
+    // a fixed IP at deploy time would be misleading. Use these instead:
+    //   - SSH:     ./scripts/connect.sh   (queries Public IP by Name tag at run time)
+    //   - DCV URL: get-public-ip via describe-instances, then https://<ip>:8443
+    //   - SSM:     aws ssm start-session ... (IP-independent, works even while no public IP)
     new cdk.CfnOutput(this, 'InstanceId', {
       value: instance.instanceId,
-      description: 'EC2 Instance ID',
-    });
-    // Note: Public IP changes on every stop/start (no EIP). The value below reflects the
-    // IP at the time of CDK deploy; for the live IP after a stop/start cycle, use:
-    //   aws ec2 describe-instances --instance-ids <InstanceId> --query 'Reservations[0].Instances[0].PublicIpAddress'
-    // or just run ./scripts/connect.sh (it queries by Name tag).
-    new cdk.CfnOutput(this, 'PublicIp', {
-      value: instance.instancePublicIp,
-      description: 'Public IP at deploy time (changes on stop/start, no EIP)',
-    });
-    new cdk.CfnOutput(this, 'SshCommand', {
-      value: `ssh -i ~/.ssh/${keypairName}.pem ubuntu@${instance.instancePublicIp}`,
-      description: 'SSH command (IP at deploy time; use ./scripts/connect.sh after stop/start)',
+      description: 'EC2 Instance ID (stable across stop/start)',
     });
     new cdk.CfnOutput(this, 'SsmStartCommand', {
       value: `aws ssm start-session --target ${instance.instanceId} --region ${this.region}`,
-      description: 'SSM Session Manager command (no pem needed, IP-independent)',
-    });
-    new cdk.CfnOutput(this, 'DcvUrl', {
-      value: `https://${instance.instancePublicIp}:8443`,
-      description: 'NICE DCV browser URL (IP changes on stop/start, re-check via describe-instances)',
+      description: 'SSM Session Manager command (no pem, no IP dependency)',
     });
   }
 }
