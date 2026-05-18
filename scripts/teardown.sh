@@ -11,7 +11,13 @@ CDK_DIR="${SCRIPT_DIR}/../cdk"
 
 echo "==> Running cdk destroy..."
 cd "${CDK_DIR}"
-pnpm exec cdk destroy --force
+# Note: cdk destroy still runs `bin/app.ts` synth once, so the same context vars
+# required by deploy must be supplied. Values don't matter for destruction; we
+# pass placeholders just to satisfy the validation in the Stack constructor.
+pnpm exec cdk destroy \
+  -c keypair_name=teardown-placeholder \
+  -c allowed_cidr=0.0.0.0/32 \
+  --force
 
 echo ""
 echo "==> Verifying no leftover resources..."
