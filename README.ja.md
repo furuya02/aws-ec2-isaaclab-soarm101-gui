@@ -103,8 +103,9 @@ ssh -i ~/.ssh/ec2-key.pem ubuntu@<PublicIp>
 | `scripts/connect.sh` | ローカル PC | 現在の Public IP を Name タグから引いて SSH 接続 |
 | `scripts/setup-docker.sh` | EC2 (t3 で OK) | Docker + NVIDIA Container Toolkit |
 | `scripts/switch-to-g5.sh` | ローカル PC | t3.medium → g5.xlarge |
-| `scripts/setup-dcv.sh` | EC2 (g5) | NVIDIA GRID Driver + Amazon DCV Server |
+| `scripts/setup-dcv.sh` | EC2 (g5) | NVIDIA CUDA Datacenter Driver 570 + Amazon DCV Server |
 | `scripts/setup-isaac.sh` | EC2 (g5) | NGC login + Isaac Sim pull + isaac_so_arm101 clone |
+| `scripts/launch-isaac.sh` | EC2 (g5、**DCV デスクトップ内ターミナル**) | Isaac Sim Native GUI を 1 行で起動（kit + isaacsim.exp.full.kit、`--clear-cache` オプション付き） |
 | `scripts/switch-to-t3.sh` | ローカル PC | g5.xlarge → t3.medium |
 | `scripts/teardown.sh` | ローカル PC | cdk destroy + 残留リソース確認 |
 
@@ -118,7 +119,7 @@ ssh -i ~/.ssh/ec2-key.pem ubuntu@<PublicIp>
 6. EC2 上で `./setup-dcv.sh` → 終了後 `sudo reboot`
 7. ブラウザで `https://<PublicIp>:8443`（DCV 接続）
 8. DCV デスクトップのターミナルで `./setup-isaac.sh`
-9. 表示された `docker run` で Isaac Sim 起動 → URDF Import → Physics Inspector で操作
+9. 同じ DCV ターミナルで `./scripts/launch-isaac.sh` で Isaac Sim Native GUI を 1 行起動 → URDF Import → Physics Inspector で操作
 10. 終わったらローカルから `./scripts/switch-to-t3.sh` で t3 戻し
 11. 完了時 `./scripts/teardown.sh` で完全削除
 

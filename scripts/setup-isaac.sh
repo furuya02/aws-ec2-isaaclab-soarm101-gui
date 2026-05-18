@@ -51,33 +51,20 @@ cat <<EOF
 
  To launch Isaac Sim Native GUI from the DCV desktop terminal:
 
-   xhost +local:docker
-   docker run --name isaac-sim --rm \\
-     --runtime=nvidia --gpus all \\
-     --ipc=host --network=host \\
-     -e DISPLAY=\${DISPLAY} -e ACCEPT_EULA=Y -e PRIVACY_CONSENT=Y \\
-     -v /tmp/.X11-unix:/tmp/.X11-unix \\
-     -v \${HOME}/work:/work \\
-     -v \${HOME}/docker/isaac-sim/kit-cache:/isaac-sim/kit/cache:rw \\
-     -v \${HOME}/docker/isaac-sim/ov-cache:/root/.cache/ov:rw \\
-     -v \${HOME}/docker/isaac-sim/gl-cache:/root/.cache/nvidia/GLCache:rw \\
-     -v \${HOME}/docker/isaac-sim/compute-cache:/root/.nv/ComputeCache:rw \\
-     -v \${HOME}/docker/isaac-sim/logs:/root/.nvidia-omniverse/logs:rw \\
-     --entrypoint /isaac-sim/kit/kit \\
-     ${NGC_IMAGE} \\
-     /isaac-sim/apps/isaacsim.exp.full.kit
+   ~/scripts/launch-isaac.sh
 
- Notes:
-   - 'isaac-sim.sh' is NOT used here — it defaults to Streaming experience.
-     Native Desktop GUI requires invoking kit/kit + apps/isaacsim.exp.full.kit directly.
-   - '--ipc=host' is required to avoid USD/tasking crashes from shared memory shortage.
-   - cache volumes are GPU-specific. When switching GPU type (e.g. g5 <-> g6e),
-     clear them: rm -rf ~/docker/isaac-sim/{kit-cache,ov-cache,gl-cache,compute-cache,logs}
+   # GPU タイプを切り替えた直後など、shader cache をクリアして起動したい場合:
+   ~/scripts/launch-isaac.sh --clear-cache
 
  Then in Isaac Sim:
    File -> Import -> set File name to ${URDF_CONTAINER} (do NOT double-click; type/paste path)
    Check "Fix Base Link" before clicking Import
    Tools -> Physics -> Physics Inspector -> click "Re-Enable authoring"
    -> drag the blue sliders on each joint to articulate the arm
+
+ Notes:
+   - launch-isaac.sh は内部で kit/kit + apps/isaacsim.exp.full.kit を叩く
+     (./isaac-sim.sh は default で Streaming experience になるため使わない)
+   - --ipc=host / cache volume / xhost も launch-isaac.sh が面倒見る
 ============================================================
 EOF

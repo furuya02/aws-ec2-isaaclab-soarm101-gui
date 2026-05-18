@@ -100,11 +100,12 @@ The instance starts as `t3.medium` (no GPU), so `nvidia-smi` is not available ye
 
 | Script | Run on | Purpose |
 |--|--|--|
-| `scripts/connect.sh` | local PC | SSH connect helper (auto Public IP) |
+| `scripts/connect.sh` | local PC | SSH connect helper (auto Public IP by Name tag) |
 | `scripts/setup-docker.sh` | EC2 (t3 is fine) | Docker + NVIDIA Container Toolkit |
 | `scripts/switch-to-g5.sh` | local PC | t3.medium → g5.xlarge |
-| `scripts/setup-dcv.sh` | EC2 (g5) | NVIDIA GRID Driver + Amazon DCV Server |
+| `scripts/setup-dcv.sh` | EC2 (g5) | NVIDIA CUDA Datacenter Driver 570 + Amazon DCV Server |
 | `scripts/setup-isaac.sh` | EC2 (g5) | NGC login + Isaac Sim pull + isaac_so_arm101 clone |
+| `scripts/launch-isaac.sh` | EC2 (g5, **DCV desktop terminal**) | One-shot Isaac Sim Native GUI launcher (kit + isaacsim.exp.full.kit, `--clear-cache` option) |
 | `scripts/switch-to-t3.sh` | local PC | g5.xlarge → t3.medium |
 | `scripts/teardown.sh` | local PC | cdk destroy + leftover check |
 
@@ -118,7 +119,7 @@ End-to-end run order:
 6. On EC2: `./setup-dcv.sh`, then `sudo reboot`
 7. Open `https://<PublicIp>:8443` in a browser (DCV)
 8. In the DCV desktop terminal: `./setup-isaac.sh`
-9. Launch Isaac Sim with the `docker run` shown by `setup-isaac.sh`, import URDF, drive joints with Physics Inspector
+9. In the same DCV terminal: `./scripts/launch-isaac.sh` to launch Isaac Sim Native GUI; then import URDF and drive joints with Physics Inspector
 10. From local: `./scripts/switch-to-t3.sh` when done
 11. `./scripts/teardown.sh` to fully destroy
 
