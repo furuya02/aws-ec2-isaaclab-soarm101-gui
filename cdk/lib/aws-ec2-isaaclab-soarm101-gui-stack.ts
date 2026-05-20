@@ -14,18 +14,8 @@ export class AwsEc2IsaaclabSoarm101GuiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    const keypairName: string | undefined = this.node.tryGetContext('keypair_name');
-    const allowedCidr: string | undefined = this.node.tryGetContext('allowed_cidr');
-    if (!keypairName) {
-      throw new Error(
-        'Missing context: keypair_name. Pass via `pnpm cdk deploy -c keypair_name=<existing key pair name>`',
-      );
-    }
-    if (!allowedCidr) {
-      throw new Error(
-        'Missing context: allowed_cidr. Pass via `pnpm cdk deploy -c allowed_cidr=<your global IP>/32`',
-      );
-    }
+    // No context required. Access is via SSM Session Manager (port-forward localhost:8443 -> EC2:8443).
+    // No SSH key pair, no inbound CIDR. Inbound is fully closed.
 
     const vpc = new ec2.Vpc(this, 'Vpc', {
       vpcName: `${PROJECT}-vpc`,
@@ -37,15 +27,16 @@ export class AwsEc2IsaaclabSoarm101GuiStack extends cdk.Stack {
       ],
     });
 
+    // Security Group: NO inbound rules. All access goes through SSM Session Manager.
+    // - SSM agent on the instance dials out to AWS API over the public IP (egress 443).
+    // - DCV browser session is tunneled via `aws ssm start-session ... AWS-StartPortForwardingSession`
+    //   so we never need to open 22 or 8443 on the SG.
     const sg = new ec2.SecurityGroup(this, 'SecurityGroup', {
       vpc,
       securityGroupName: `${PROJECT}-sg`,
-      description: 'SSH and NICE DCV access for Isaac Sim host',
+      description: 'SSM-only access (inbound fully closed) for Isaac Sim host',
       allowAllOutbound: true,
     });
-    sg.addIngressRule(ec2.Peer.ipv4(allowedCidr), ec2.Port.tcp(22), 'SSH from allowed CIDR');
-    sg.addIngressRule(ec2.Peer.ipv4(allowedCidr), ec2.Port.tcp(8443), 'NICE DCV TCP from allowed CIDR');
-    sg.addIngressRule(ec2.Peer.ipv4(allowedCidr), ec2.Port.udp(8443), 'NICE DCV UDP/QUIC from allowed CIDR');
 
     const role = new iam.Role(this, 'InstanceRole', {
       roleName: `${PROJECT}-ec2-role`,
@@ -77,7 +68,6 @@ export class AwsEc2IsaaclabSoarm101GuiStack extends cdk.Stack {
       availabilityZone: TARGET_AZ,
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MEDIUM),
       machineImage,
-      keyPair: ec2.KeyPair.fromKeyPairName(this, 'KeyPair', keypairName),
       securityGroup: sg,
       role,
       blockDevices: [
@@ -119,19 +109,21 @@ export class AwsEc2IsaaclabSoarm101GuiStack extends cdk.Stack {
     });
     idleAlarm.addAlarmAction(new cw_actions.Ec2Action(cw_actions.Ec2InstanceAction.STOP));
 
-    // Outputs are intentionally limited to IP-independent values.
-    // Public IP changes on every stop/start (no EIP), so SshCommand / DcvUrl that embed
-    // a fixed IP at deploy time would be misleading. Use these instead:
-    //   - SSH:     ./scripts/connect.sh   (queries Public IP by Name tag at run time)
-    //   - DCV URL: get-public-ip via describe-instances, then https://<ip>:8443
-    //   - SSM:     aws ssm start-session ... (IP-independent, works even while no public IP)
+    // Outputs are IP-independent. Both commands work regardless of the current Public IP.
     new cdk.CfnOutput(this, 'InstanceId', {
       value: instance.instanceId,
       description: 'EC2 Instance ID (stable across stop/start)',
     });
     new cdk.CfnOutput(this, 'SsmStartCommand', {
       value: `aws ssm start-session --target ${instance.instanceId} --region ${this.region}`,
-      description: 'SSM Session Manager command (no pem, no IP dependency)',
+      description: 'Interactive shell via SSM Session Manager (no SSH key, no inbound port)',
+    });
+    new cdk.CfnOutput(this, 'DcvPortForwardCommand', {
+      value:
+        `aws ssm start-session --target ${instance.instanceId} --region ${this.region}` +
+        ` --document-name AWS-StartPortForwardingSession` +
+        ` --parameters '{"portNumber":["8443"],"localPortNumber":["8443"]}'`,
+      description: 'Port-forward localhost:8443 -> EC2:8443 for Amazon DCV browser access',
     });
   }
 }

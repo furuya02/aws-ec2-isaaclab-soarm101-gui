@@ -10,5 +10,5 @@ new AwsEc2IsaaclabSoarm101GuiStack(app, 'AwsEc2IsaaclabSoarm101GuiStack', {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION ?? 'ap-northeast-1',
   },
-  description: 'EC2 + NICE DCV + Isaac Sim GUI host (t3.medium <-> g5.xlarge switchable, idle Auto-Stop)',
+  description: 'EC2 + Amazon DCV + Isaac Sim GUI host via SSM port-forward (t3.medium <-> g5.xlarge switchable, idle Auto-Stop)',
 });
