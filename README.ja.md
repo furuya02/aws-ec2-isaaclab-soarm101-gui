@@ -15,10 +15,10 @@ AWS EC2 + Amazon DCV で Isaac Sim / Isaac Lab の GUI を起動し、SO-ARM101 
 | EBS gp3 35 GB | $0.096/GB/月 | 約 17 円/日 |
 | Public IPv4（自動付与、**停止時は解放**） | $0.005/h（起動中のみ） | **停止中 0 円** |
 
-**3 重防御**:
-1. **CloudWatch Alarm**: CPU < 2% × 連続 30 分で **自動 Stop**（本スタックで標準装備）
-2. **t3 ↔ g5 切替運用**: 普段は t3.medium、GPU 必要時のみ g5.xlarge
-3. **完全削除手順**: `pnpm cdk destroy`
+**コスト管理**:
+1. **t3 ↔ g5 切替運用**: 普段は t3.medium、GPU 必要時のみ g5.xlarge
+2. **完全削除手順**: `pnpm cdk destroy`
+3. **離席時は Isaac Sim を閉じて stop**（CPU ベースの自動停止は Isaac Sim 起動中に CPU が ~70% で張り付き効かないため未採用。定期通知ベースの停止は別記事で扱う予定）
 
 ---
 
@@ -40,7 +40,6 @@ AWS EC2 + Amazon DCV で Isaac Sim / Isaac Lab の GUI を起動し、SO-ARM101 
 - IAM Role（`AmazonSSMManagedInstanceCore` + DCV ライセンス / NVIDIA driver S3 Read）
 - EC2 Instance（初期 `t3.medium`、Ubuntu 22.04 LTS、**EBS gp3 35 GB**、オンライン拡張可）
 - Public IPv4 は**自動付与**（EIP 不使用、SSM agent の AWS API 発信用）。stop/start で IP は変わりますが、接続は SSM 経由なので影響を受けません。
-- CloudWatch Alarm（CPU < 2% × 30 分 → **EC2 ネイティブ Stop アクション**、Lambda 不要）
 
 ## 3. 構築
 
@@ -132,17 +131,17 @@ aws ec2 start-instances --instance-ids ${INSTANCE_ID}
 
 EBS は共通なので、インストール済みパッケージ・Docker イメージはそのまま引き継がれます。
 
-## 6. CloudWatch Alarm（Auto Stop）
+## 6. 放置対策について
 
-本スタックでは以下のアラームを自動作成します:
+CPU 使用率ベースの自動停止（CloudWatch Alarm）は**採用していません**。Isaac Sim を起動している間は idle でも CPU が ~70% で張り付くため、「CPU < 2%」のような閾値では「使用中」と「起動したまま放置」を区別できないからです。
 
-- **名前**: `aws-ec2-isaaclab-soarm101-gui-idle-stop`
-- **条件**: CPU 平均使用率 < 2% が 連続 30 分（5 分 × 6 回）
-- **アクション**: EC2 ネイティブ Stop（terminate ではなく Stop、EBS は残る）
+当面は次の運用でカバーします:
 
-「GUI 起動したまま PC を離れた」「作業終了後に止め忘れた」といった低負荷状態を自動検知して止めます。
+- **GPU が不要なときは `switch-to-t3.sh` で t3.medium に戻す**（普段は安価）
+- **離席・作業終了時は Isaac Sim を閉じて EC2 を stop**
+- **しばらく使わないなら次節で完全削除**
 
-> Stop は EBS を残すため、後で再開可能です。**完全削除は次節**を実行してください。
+定期通知（LINE / メール等）で「継続 / 停止」を選ぶ仕組みは、別記事で扱う予定です。
 
 ## 7. 削除（完全）
 

@@ -27,7 +27,9 @@ sudo systemctl set-default graphical.target
 #   kernel 6.8 のモジュールビルドには gcc-12 が必要。Ubuntu 22.04 default の gcc-11 は
 #   '-ftrivial-auto-var-init=zero' を知らず、nvidia-dkms-570 のビルドが失敗する。
 sudo apt-get install -y build-essential gcc-12 "linux-headers-$(uname -r)"
+# Note: --install だけでは既存の gcc-11 が選ばれたままになるので --set で明示切替する
 sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100
+sudo update-alternatives --set gcc /usr/bin/gcc-12
 cd /tmp
 wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
 sudo dpkg -i cuda-keyring_1.1-1_all.deb

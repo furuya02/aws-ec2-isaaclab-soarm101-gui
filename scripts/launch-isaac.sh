@@ -15,11 +15,12 @@ set -euo pipefail
 NGC_IMAGE="${NGC_IMAGE:-nvcr.io/nvidia/isaac-sim:5.1.0}"
 EXPERIENCE="${EXPERIENCE:-/isaac-sim/apps/isaacsim.exp.full.kit}"
 
-# DISPLAY が無い (SSH ターミナル等) なら早期失敗
+# DISPLAY が無い (SSH/SSM ターミナル等) なら早期失敗
 if [[ -z "${DISPLAY:-}" ]]; then
   echo "Error: DISPLAY is not set." >&2
-  echo "       Run this script inside the DCV desktop terminal," >&2
-  echo "       or 'export DISPLAY=:0' first if already logged in via browser DCV." >&2
+  echo "       Run this script inside the DCV desktop terminal (DISPLAY is preset there)." >&2
+  echo "       From SSM/SSH: in a DCV terminal run 'echo \$DISPLAY' to find the value" >&2
+  echo "       (often :1, not :0), then 'export DISPLAY=<that value>'." >&2
   exit 1
 fi
 
@@ -40,6 +41,9 @@ docker rm -f isaac-sim 2>/dev/null || true
 
 # Launch Native GUI by invoking kit + experience directly
 # (do NOT use ./isaac-sim.sh — it defaults to the Streaming experience and won't show a window)
+# Note: --/app/extensions/registryEnabled=false disables the online extension-registry sync
+#   (omni.kit.registry.nucleus). Without it, startup can hang several minutes waiting on the
+#   online registry. We import URDF from local files, so the online registry is unnecessary.
 exec docker run --name isaac-sim --rm \
   --runtime=nvidia --gpus all \
   --ipc=host --network=host \
@@ -53,4 +57,5 @@ exec docker run --name isaac-sim --rm \
   -v "${HOME}/docker/isaac-sim/logs:/root/.nvidia-omniverse/logs:rw" \
   --entrypoint /isaac-sim/kit/kit \
   "${NGC_IMAGE}" \
-  "${EXPERIENCE}"
+  "${EXPERIENCE}" \
+  --/app/extensions/registryEnabled=false

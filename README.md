@@ -15,10 +15,10 @@ This stack provisions a GPU-capable EC2 host, which is expensive when left runni
 | EBS gp3 35 GB | $0.096/GB/mo | — (~¥17/day) |
 | Public IPv4 (auto-assigned, **released on stop**) | $0.005/h while running | 0 円 while stopped |
 
-**Triple defense**:
-1. **CloudWatch Alarm**: auto-stops the instance after 30 minutes of CPU < 2% (built into this stack)
-2. **t3 ↔ g5 swap**: everyday work on `t3.medium`, switch to `g5.xlarge` only when GPU is needed
-3. **Full teardown**: `pnpm cdk destroy`
+**Cost control**:
+1. **t3 ↔ g5 swap**: everyday work on `t3.medium`, switch to `g5.xlarge` only when GPU is needed
+2. **Full teardown**: `pnpm cdk destroy`
+3. **Close Isaac Sim and stop when away** (CPU-based auto-stop is NOT used: Isaac Sim keeps CPU at ~70% even when idle, so a CPU threshold can't tell "in use" from "left running". A notify-based stop is planned for a separate article.)
 
 ---
 
@@ -40,7 +40,6 @@ This stack provisions a GPU-capable EC2 host, which is expensive when left runni
 - IAM Role (`AmazonSSMManagedInstanceCore` + S3 read for DCV license / NVIDIA driver)
 - EC2 Instance (initial `t3.medium`, Ubuntu 22.04 LTS, **EBS gp3 35 GB** — online-expandable)
 - Public IPv4 is **auto-assigned** (no EIP; needed only for the SSM agent's egress to the AWS API). IP changes across stop/start, but access is via SSM so this does not matter.
-- CloudWatch Alarm (CPU < 2% × 30 min → native EC2 Stop action, no Lambda)
 
 ## 3. Deploy
 
@@ -132,16 +131,17 @@ aws ec2 start-instances --instance-ids ${INSTANCE_ID}
 
 EBS is shared, so installed packages and Docker images persist across the swap.
 
-## 6. CloudWatch Alarm (Auto Stop)
+## 6. About idle protection
 
-This stack creates the alarm `aws-ec2-isaaclab-soarm101-gui-idle-stop`:
+A CPU-based auto-stop (CloudWatch Alarm) is **not used**. While Isaac Sim is running, the CPU stays at ~70% even when idle, so a "CPU < 2%" threshold cannot distinguish "in use" from "left running".
 
-- Condition: average CPU < 2% for 30 minutes (6 × 5-min periods)
-- Action: native EC2 Stop (not terminate — EBS is preserved)
+For now, rely on operational habits:
 
-It catches forgotten shutdowns (e.g. left the GUI running and walked away).
+- **Switch back to t3.medium with `switch-to-t3.sh` when the GPU is not needed** (cheaper for everyday work)
+- **Close Isaac Sim and stop the EC2 instance when you step away / finish**
+- **Run the teardown below if you won't use it for a while**
 
-> Stop preserves EBS so you can resume. For full cleanup, run the next step.
+A notify-based stop (LINE / email "continue or stop") is planned for a separate article.
 
 ## 7. Teardown (full deletion)
 
